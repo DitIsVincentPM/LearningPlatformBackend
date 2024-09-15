@@ -143,6 +143,76 @@ app.get('/api/getCardCollections', authenticateToken, (req, res) => {
     });
 });
 
+app.get('/api/getCardData', authenticateToken, (req, res) => {
+    const userId = req.user.id;
+    const cardId = req.headers['card-id'];
+
+    if (!cardId) {
+        return res.status(400).json({ message: 'Card ID is required' });
+    }
+
+    // Query to get the specific card by cardId and userId
+    db.query('SELECT * FROM cards WHERE id = ? AND user_id = ?', [cardId, userId], (err, results) => {
+        if (err) {
+            console.error('Error querying the database:', err);
+            return res.status(500).json({ message: 'Internal server error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'Card not found' });
+        }
+
+        res.json({ cardData: results[0] }); // Assuming the card data is a single object
+        console.log(`Card data for cardId ${cardId} and user ${userId} retrieved`);
+    });
+});
+
+app.get('/api/getCardsFromCollection', authenticateToken, (req, res) => {
+    const userId = req.user.id; // Extract the user ID from the authenticated token
+    const collectionId = req.query.collectionId; // Extract collectionId from query parameters
+
+    if (!collectionId) {
+        return res.status(400).json({ message: 'Collection ID is required' });
+    }
+
+    db.query('SELECT * FROM cards WHERE collection_id = ? AND user_id = ?', [collectionId, userId], (err, results) => {
+        if (err) {
+            console.error('Error querying the database:', err);
+            return res.status(500).json({ message: 'Internal server error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'No cards found for this collection' });
+        }
+
+        res.json({ cards: results });
+        console.log(`Cards from collectionId ${collectionId} for user ${userId} retrieved`);
+    });
+});
+
+app.get('/api/getCollectionData', authenticateToken, (req, res) => {
+    const userId = req.user.id; // Extract the user ID from the authenticated token
+    const collectionId = req.query.collectionId; // Extract collectionId from query parameters
+
+    if (!collectionId) {
+        return res.status(400).json({ message: 'Collection ID is required' });
+    }
+
+    db.query('SELECT * FROM collections WHERE id = ? AND user_id = ?', [collectionId, userId], (err, results) => {
+        if (err) {
+            console.error('Error querying the database:', err);
+            return res.status(500).json({ message: 'Internal server error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'No cards found for this collection' });
+        }
+
+        res.json({ collection: results });
+        console.log(`Cards from collectionId ${collectionId} for user ${userId} retrieved`);
+    });
+});
+
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
