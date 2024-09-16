@@ -10,7 +10,7 @@ const app = express();
 const port = 8080;
 
 const corsOptions = {
-    origin: 'http://localhost:5173',
+    origin: process.env.WEBSITE_URL,
     methods: 'GET,POST',
     allowedHeaders: 'Content-Type, Authorization'
 };
