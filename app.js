@@ -8,7 +8,7 @@ const dbUtils = require('./dbUtils');
 require('dotenv').config();
 
 const app = express();
-const port = 8080;
+const port = 8070;
 
 const corsOptions = {
     origin: process.env.WEBSITE_URL,
