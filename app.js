@@ -12,7 +12,7 @@ const port = 8080;
 
 const corsOptions = {
     origin: process.env.WEBSITE_URL,
-    methods: 'GET,POST',
+    methods: 'GET,POST,DELETE,PUT',
     allowedHeaders: 'Content-Type, Authorization'
 };
 
@@ -60,6 +60,88 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 });
+
+app.post('/api/createCardCollection', authenticateToken, async (req, res) => {
+    const { name } = req.body;
+    const userId = req.user.id; // Get the user ID from the authenticated user
+
+    if (!name || name.trim() === '') {
+        return res.status(400).json({ message: 'Collection name is required' });
+    }
+
+    try {
+        // Insert the new collection into the database
+        const result = await dbUtils.query('INSERT INTO collections (name, user_id) VALUES (?, ?)', [name, userId]);
+
+        if (result.affectedRows > 0) {
+            // Successfully created the collection
+            res.status(201).json({ message: 'Collection created successfully', collectionId: result.insertId });
+            console.log(`Collection created with id ${result.insertId} by user ${userId}`);
+        } else {
+            res.status(500).json({ message: 'Failed to create collection' });
+            console.log(`Failed to create collection for user ${userId}`);
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Internal server error' });
+        console.error(`Error creating collection for user ${userId}: ${err.message}`);
+    }
+});
+
+app.delete('/api/deleteCollection/:collectionId', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    const collectionId = req.params.collectionId;
+
+    try {
+        // Ensure the user owns the collection
+        const collection = await dbUtils.query('SELECT * FROM collections WHERE id = ? AND user_id = ?', [collectionId, userId]);
+
+        if (collection.length === 0) {
+            return res.status(404).json({ message: 'Collection not found or unauthorized' });
+        }
+
+        // Delete the collection
+        await dbUtils.query('DELETE FROM collections WHERE id = ?', [collectionId]);
+        res.status(200).json({ message: 'Collection deleted successfully' });
+        console.log(`Collection ${collectionId} deleted by user ${userId}`);
+    } catch (err) {
+        res.status(500).json({ message: 'Internal server error' });
+        console.error(`Error deleting collection for user ${userId}: ${err.message}`);
+    }
+});
+
+app.post('/api/addCards', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    const { collectionId, cards } = req.body; // 'cards' should be an array of card objects
+
+    if (!Array.isArray(cards) || cards.length === 0) {
+        return res.status(400).json({ message: 'No cards provided' });
+    }
+
+    try {
+        // Ensure the user owns the collection
+        const collection = await dbUtils.query('SELECT * FROM collections WHERE id = ? AND user_id = ?', [collectionId, userId]);
+        if (collection.length === 0) {
+            return res.status(404).json({ message: 'Collection not found or unauthorized' });
+        }
+
+        // Prepare the SQL query for bulk insertion
+        const values = cards.map(card => [card.name, card.description, collectionId, userId]); // 'disabled' field defaults to false
+
+        // Adjust the SQL query for bulk insert
+        const placeholders = values.map(() => '(?, ?, ?, ?)').join(', ');
+        const flattenedValues = values.flat(); // Flatten the array for the query
+
+        const query = `INSERT INTO cards (frontText, backText, collection_id, user_id) VALUES ${placeholders}`;
+        const result = await dbUtils.query(query, flattenedValues);
+
+        res.status(201).json({ message: 'Cards created successfully', insertedRows: result.affectedRows });
+        console.log(`${result.affectedRows} cards added to collection ${collectionId} by user ${userId}`);
+    } catch (err) {
+        res.status(500).json({ message: 'Internal server error' });
+        console.error(`Error adding cards to collection ${collectionId} for user ${userId}: ${err.message}`);
+    }
+});
+
 
 app.post('/api/register', async (req, res) => {
     const { name, nameSecond, password } = req.body;
@@ -110,6 +192,58 @@ app.get('/api/getCardCollections', authenticateToken, async (req, res) => {
         console.log(`Card collections for user ${userId} retrieved`);
     } catch (err) {
         res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Function to delete a card
+app.delete('/api/deleteCard/:cardId', authenticateToken, async (req, res) => {
+    const userId = req.user.id; // Get user ID from the authenticated user
+    const cardId = req.params.cardId; // Get card ID from request parameters
+
+    try {
+        // Ensure the user owns the card
+        const card = await dbUtils.query('SELECT * FROM cards WHERE id = ? AND user_id = ?', [cardId, userId]);
+
+        if (card.length === 0) {
+            return res.status(404).json({ message: 'Card not found or unauthorized' });
+        }
+
+        // Delete the card
+        await dbUtils.query('DELETE FROM cards WHERE id = ?', [cardId]);
+        res.status(200).json({ message: 'Card deleted successfully' });
+        console.log(`Card ${cardId} deleted by user ${userId}`);
+    } catch (err) {
+        res.status(500).json({ message: 'Internal server error' });
+        console.error(`Error deleting card ${cardId} for user ${userId}: ${err.message}`);
+    }
+});
+
+// Function to edit a card
+app.put('/api/editCard/:cardId', authenticateToken, async (req, res) => {
+    const userId = req.user.id; // Get user ID from the authenticated user
+    const cardId = req.params.cardId; // Get card ID from request parameters
+    const { frontText, backText } = req.body; // Extract new front and back text from request body
+
+    if (!frontText || !backText) {
+        return res.status(400).json({ message: 'Front text and back text are required' });
+    }
+
+    try {
+        // Ensure the user owns the card
+        const card = await dbUtils.query('SELECT * FROM cards WHERE id = ? AND user_id = ?', [cardId, userId]);
+
+        if (card.length === 0) {
+            return res.status(404).json({ message: 'Card not found or unauthorized' });
+        }
+
+        // Update the card details
+        await dbUtils.query('UPDATE cards SET frontText = ?, backText = ? WHERE id = ?', [frontText, backText, cardId]);
+
+        res.status(200).json({ message: 'Card updated successfully' });
+        console.log(`Card ${cardId} updated by user ${userId}`);
+    } catch (err) {
+        res.status(500).json({ message: 'Internal server error' });
+        console.error(`Error updating card ${cardId} for user ${userId}: ${err.message}`);
     }
 });
 
